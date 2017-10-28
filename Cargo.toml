@@ -1,0 +1,10 @@
+[package]
+name = "bit_manager"
+version = "0.1.0"
+authors = ["Scott Taylor <scott11x8@gmail.com>"]
+
+description = "A crate for reading and writing bits from various streams"
+keywords = ["bit", "byte", "manager", "read", "write"]
+license = "MIT"
+
+include = ["src/**/*", "Cargo.toml", "LICENSE"]
