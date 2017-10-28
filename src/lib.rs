@@ -4,8 +4,7 @@ use std::error;
 use std::result;
 use std::fmt;
 use std::io;
-use std::io::{Read, Write};
-use std::fs;
+use std::io::Read;
 
 /// An enum for possible errors when reading and writing bits
 #[derive(Debug)]
