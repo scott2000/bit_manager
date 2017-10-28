@@ -1,4 +1,35 @@
 //! A crate for reading and writing bits from various streams
+//!
+//! # Writing
+//! ```
+//! extern crate bit_manager;
+//! use bit_manager::BitWriter;
+//!
+//! # fn main() {
+//! let mut writer = BitWriter::new(Vec::new());
+//!
+//! writer.write_bits(&[false, true, false, false, true, false, false, false]).unwrap();
+//! writer.write_byte(b'i').unwrap();
+//!
+//! assert_eq!(writer.into_inner().unwrap(), b"Hi");
+//! # }
+//! ```
+//!
+//! # Reading
+//! ```
+//! extern crate bit_manager;
+//! use bit_manager::BitReader;
+//!
+//! # fn main() {
+//! let mut reader = BitReader::new(&b"Hi"[..]);
+//! let mut h = [false; 8];
+//!
+//! reader.read_bits(&mut h).unwrap();
+//!
+//! assert_eq!(h, [false, true, false, false, true, false, false, false]);
+//! assert_eq!(reader.read_byte().unwrap(), b'i');
+//! # }
+//! ```
 
 #![deny(missing_docs)]
 
@@ -6,6 +37,7 @@ use std::error;
 use std::result;
 use std::fmt;
 use std::io;
+use std::mem;
 
 /// An enum for possible errors when reading and writing bits
 #[derive(Debug)]
@@ -35,7 +67,7 @@ impl error::Error for Error {
 }
 
 /// A specialized Result type for bit I/O operations
-pub type Result<T> = std::result::Result<T, Error>;
+pub type Result<T> = result::Result<T, Error>;
 
 /// An enum that represents how a stream is terminated
 #[derive(Debug)]
@@ -232,6 +264,22 @@ impl fmt::Display for BitBuffer {
 }
 
 /// A wrapper for any type implementing `io::Read` that allows the reading of individual bits
+///
+/// ## Example
+/// ```
+/// extern crate bit_manager;
+/// use bit_manager::BitReader;
+///
+/// # fn main() {
+/// let mut reader = BitReader::new(&b"Hi"[..]);
+/// let mut h = [false; 8];
+///
+/// reader.read_bits(&mut h).unwrap();
+///
+/// assert_eq!(h, [false, true, false, false, true, false, false, false]);
+/// assert_eq!(reader.read_byte().unwrap(), b'i');
+/// # }
+/// ```
 pub struct BitReader<T: io::Read> {
     input: T,
     buffer: BitBuffer,
@@ -334,20 +382,34 @@ impl<T: io::Read> BitReader<T> {
 
 /// A wrapper for any type implementing `io::Write` that allows the writing of individual bits
 ///
+/// ## Example
+/// ```
+/// extern crate bit_manager;
+/// use bit_manager::BitWriter;
+///
+/// # fn main() {
+/// let mut writer = BitWriter::new(Vec::new());
+///
+/// writer.write_bits(&[false, true, false, false, true, false, false, false]).unwrap();
+/// writer.write_byte(b'i').unwrap();
+///
+/// assert_eq!(writer.into_inner().unwrap(), b"Hi");
+/// # }
+/// ```
+///
 /// ## Closing
 ///
 /// When the writer is dropped, the contents of its buffer will be written out.
 /// However, any errors that happen in the process of closing the buffer when the
 /// writer is dropped will be ignored. Code that wishes to handle such errors must
-/// manually call close before the writer is dropped.
+/// manually call close before the writer is dropped. The internal buffer will be returned on success.
 ///
 /// A failed flush operation will result in `Error::BufferClosed`. Any further operations
 /// will also fail because the internal buffer may have been corrupted.
 pub struct BitWriter<T: io::Write> {
-    output: T,
+    output: Option<T>,
     buffer: BitBuffer,
     precision: Precision,
-    closed: bool,
 }
 
 impl<T: io::Write> BitWriter<T> {
@@ -359,10 +421,9 @@ impl<T: io::Write> BitWriter<T> {
     /// Creates a new bit writer with the given writer and precision.
     pub fn new_with_precision(writer: T, precision: Precision) -> BitWriter<T> {
         BitWriter {
-            output: writer,
+            output: Some(writer),
             buffer: BitBuffer::new(),
             precision,
-            closed: false,
         }
     }
 
@@ -410,15 +471,15 @@ impl<T: io::Write> BitWriter<T> {
 
     /// Flushes the internal buffer. Returns the number of bits left in the buffer.
     pub fn flush(&mut self) -> Result<usize> {
-        if !self.closed {
+        if self.output.is_some() {
             let mut buf: Vec<u8> = Vec::new();
             while let Ok(byte) = self.buffer.pop_left() {
                 buf.push(byte);
             }
-            match self.output.write(&buf) {
+            match self.output.as_mut().unwrap().write(&buf) {
                 Ok(n) if n == buf.len() => Ok(self.buffer.bits as usize),
                 _ => {
-                    self.closed = true;
+                    self.output = None;
                     Err(Error::BufferClosed)
                 },
             }
@@ -428,8 +489,7 @@ impl<T: io::Write> BitWriter<T> {
     }
 
     fn close_mut(&mut self) -> Result<()> {
-        if !self.closed {
-            self.closed = true;
+        if self.output.is_some() {
             if let Precision::Bit = self.precision {
                 self.buffer.push_bit_right(true)?;
                 self.precision = Precision::Byte;
@@ -443,9 +503,22 @@ impl<T: io::Write> BitWriter<T> {
         }
     }
 
+    /// Returns the inner writer after closing and flushing the internal buffer.
+    pub fn into_inner(mut self) -> Result<T> {
+        if let Err(e) = self.close_mut() {
+            return Err(e);
+        }
+        match mem::replace(&mut self.output, None) {
+            Some(v) => Ok(v),
+            None => Err(Error::BufferClosed),
+        }
+    }
+
     /// Flushes the remaining internal buffer and aligns bits to the next byte using the precision of this writer.
     pub fn close(mut self) -> Result<()> {
-        self.close_mut()
+        self.close_mut()?;
+        self.output = None;
+        Ok(())
     }
 }
 
