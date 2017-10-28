@@ -1,16 +1,20 @@
 //! A crate for reading and writing bits from various streams
 
+#![deny(missing_docs)]
+
 use std::error;
 use std::result;
 use std::fmt;
 use std::io;
-use std::io::Read;
 
 /// An enum for possible errors when reading and writing bits
 #[derive(Debug)]
 pub enum Error {
+    /// An unexpected empty buffer
     BufferEmpty,
+    /// An unexpected full buffer
     BufferFull,
+    /// An unexpected closed buffer
     BufferClosed,
 }
 
@@ -328,24 +332,6 @@ impl<T: io::Read> BitReader<T> {
     }
 }
 
-#[test] fn test() {
-    let mut buffer = BitBuffer::new();
-    buffer.push_right(72);
-    println!("{:?} => {0}", buffer);
-    {
-        let mut writer = BitWriter::new_with_precision(fs::File::create("/home/scott/test.txt").expect("file not created"), Precision::Bit);
-        writer.write_bytes(&[b'H', b'e', b'l', b'l', b'o']).unwrap();
-        writer.write_bits(&[true, false, false, true]).unwrap();
-    }
-    let mut reader = BitReader::new_with_precision(fs::File::open("/home/scott/test.txt").expect("file not found"), Precision::Bit);
-    while let Ok(byte) = reader.read_byte() {
-        println!("{}", byte);
-    }
-    while let Ok(bit) = reader.read_bit() {
-        println!("{}", bit);
-    }
-}
-
 /// A wrapper for any type implementing `io::Write` that allows the writing of individual bits
 ///
 /// ## Closing
@@ -451,8 +437,7 @@ impl<T: io::Write> BitWriter<T> {
             while self.buffer.bits() & 7 != 0 {
                 self.buffer.push_bit_right(false)?;
             }
-            self.flush();
-            Ok(())
+            self.flush().and(Ok(()))
         } else {
             Err(Error::BufferClosed)
         }
