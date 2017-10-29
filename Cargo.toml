@@ -1,6 +1,6 @@
 [package]
 name = "bit_manager"
-version = "0.1.1"
+version = "0.2.0"
 authors = ["Scott Taylor <scott11x8@gmail.com>"]
 
 description = "A crate for reading and writing bits from various streams"

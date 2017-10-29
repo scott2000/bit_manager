@@ -1,0 +1,12 @@
+
+
+#[test] fn test() {
+    let mut writer = BitWriter::new(std::fs::File::create("/home/scott/Desktop/test.txt").expect("file not created"));
+    let mask = BitMask::bits(13);
+    writer.write(&mask);
+    writer.write_using(4995, &mask).expect("data not written");
+    writer.close().expect("stream not closed");
+    let mut reader = BitReader::new(std::fs::File::open("/home/scott/Desktop/test.txt").expect("file not opened"));
+    let mask: BitMask = reader.read().expect("invalid mask");
+    println!("{:?} => {:?}", mask, reader.read_using::<u64, _>(&mask));
+}

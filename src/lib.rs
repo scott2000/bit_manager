@@ -9,7 +9,7 @@
 //! let mut writer = BitWriter::new(Vec::new());
 //!
 //! writer.write_bits(&[false, true, false, false, true, false, false, false]).unwrap();
-//! writer.write_byte(b'i').unwrap();
+//! writer.write(b'i').unwrap();
 //!
 //! assert_eq!(writer.into_inner().unwrap(), b"Hi");
 //! # }
@@ -30,14 +30,19 @@
 //! assert_eq!(reader.read_byte().unwrap(), b'i');
 //! # }
 //! ```
-
+//!
 #![deny(missing_docs)]
+
+pub mod prelude;
+pub mod conversions;
 
 use std::error;
 use std::result;
 use std::fmt;
 use std::io;
 use std::mem;
+
+use conversions::*;
 
 /// An enum for possible errors when reading and writing bits
 #[derive(Debug)]
@@ -48,6 +53,8 @@ pub enum Error {
     BufferFull,
     /// An unexpected closed buffer
     BufferClosed,
+    /// An unexpected closed buffer
+    ConversionFailed,
 }
 
 impl fmt::Display for Error {
@@ -62,6 +69,7 @@ impl error::Error for Error {
             Error::BufferEmpty => "buffer empty",
             Error::BufferFull => "buffer full",
             Error::BufferClosed => "buffer closed",
+            Error::ConversionFailed => "conversion failed",
         }
     }
 }
@@ -303,6 +311,16 @@ impl<T: io::Read> BitReader<T> {
         }
     }
 
+    /// Reads a value.
+    pub fn read<V: BitReadable>(&mut self) -> Result<V> {
+        V::read_from(self)
+    }
+
+    /// Reads a value using a converter.
+    pub fn read_using<V, C>(&mut self, converter: &C) -> Result<V> where C: BitRead<V> {
+        converter.read_value_from(self)
+    }
+
     /// Reads a single bit.
     pub fn read_bit(&mut self) -> Result<bool> {
         self.update();
@@ -391,7 +409,7 @@ impl<T: io::Read> BitReader<T> {
 /// let mut writer = BitWriter::new(Vec::new());
 ///
 /// writer.write_bits(&[false, true, false, false, true, false, false, false]).unwrap();
-/// writer.write_byte(b'i').unwrap();
+/// writer.write(b'i').unwrap();
 ///
 /// assert_eq!(writer.into_inner().unwrap(), b"Hi");
 /// # }
@@ -425,6 +443,16 @@ impl<T: io::Write> BitWriter<T> {
             buffer: BitBuffer::new(),
             precision,
         }
+    }
+
+    /// Writes a value.
+    pub fn write<V: BitWritable>(&mut self, value: V) -> Result<()> {
+        value.write_to(self)
+    }
+
+    /// Writes a value using a converter.
+    pub fn write_using<V, C>(&mut self, value: V, converter: &C) -> Result<()> where C: BitWrite<V> {
+        converter.write_value_to(value, self)
     }
 
     /// Writes a single bit.
@@ -526,5 +554,53 @@ impl<T: io::Write> Drop for BitWriter<T> {
     #[allow(unused_must_use)]
     fn drop(&mut self) {
         self.close_mut();
+    }
+}
+
+/// A trait for reading a value
+pub trait BitReadable: Sized {
+    /// Read a value from the given reader
+    fn read_from<R: io::Read>(reader: &mut BitReader<R>) -> Result<Self>;
+}
+
+impl BitReadable for bool {
+    fn read_from<R: io::Read>(reader: &mut BitReader<R>) -> Result<Self> {
+        reader.read_bit()
+    }
+}
+
+impl BitReadable for u8 {
+    fn read_from<R: io::Read>(reader: &mut BitReader<R>) -> Result<Self> {
+        reader.read_byte()
+    }
+}
+
+/// A trait for writing a value
+pub trait BitWritable: Sized {
+    /// Write this value to the given writer
+    fn write_to<W: io::Write>(self, writer: &mut BitWriter<W>) -> Result<()>;
+}
+
+impl BitWritable for bool {
+    fn write_to<W: io::Write>(self, writer: &mut BitWriter<W>) -> Result<()> {
+        writer.write_bit(self)
+    }
+}
+
+impl BitWritable for u8 {
+    fn write_to<W: io::Write>(self, writer: &mut BitWriter<W>) -> Result<()> {
+        writer.write_byte(self)
+    }
+}
+
+impl<'a> BitWritable for &'a bool {
+    fn write_to<W: io::Write>(self, writer: &mut BitWriter<W>) -> Result<()> {
+        writer.write_bit(*self)
+    }
+}
+
+impl<'a> BitWritable for &'a u8 {
+    fn write_to<W: io::Write>(self, writer: &mut BitWriter<W>) -> Result<()> {
+        writer.write_byte(*self)
     }
 }
