@@ -1,12 +1,27 @@
 
-
 #[test] fn test() {
+    assert_eq!(-1i64 as u64, u64::max_value());
+    assert_eq!(-1i64, u64::max_value() as i64);
     let mut writer = BitWriter::new(std::fs::File::create("/home/scott/Desktop/test.txt").expect("file not created"));
-    let mask = BitMask::bits(13);
-    writer.write(&mask);
-    writer.write_using(4995, &mask).expect("data not written");
+    let str_mask = StringConverter::NullTerminated;
+    let str_mask_2 = StringConverter::FixedLength { length: 8 };
+    let mask = BitMask::bits(32);
+    writer.write(&mask).expect("mask not written");
+    writer.write_using(u16::max_value() as u32, &mask).expect("data not written");
+    writer.write(&str_mask).expect("string mask not written");
+    writer.write(&str_mask_2).expect("string 2 mask not written");
+    writer.align().unwrap();
+    writer.write_using("Testing 1", &str_mask).expect("string 1 not written");
+    writer.write_using(String::from("Test #2 "), &str_mask_2).expect("string 2 not written");
+    writer.write("This is a test message. Hopefully it works.").expect("string 3 not written");
     writer.close().expect("stream not closed");
     let mut reader = BitReader::new(std::fs::File::open("/home/scott/Desktop/test.txt").expect("file not opened"));
     let mask: BitMask = reader.read().expect("invalid mask");
     println!("{:?} => {:?}", mask, reader.read_using::<u64, _>(&mask));
+    let str_mask: StringConverter = reader.read().expect("invalid string mask");
+    let str_mask_2: StringConverter = reader.read().expect("invalid string 2 mask");
+    reader.align().unwrap();
+    println!("{:?} => {:?}", str_mask, reader.read_using(&str_mask));
+    println!("{:?} => {:?}", str_mask_2, reader.read_using(&str_mask_2));
+    println!("{:?} => {:?}", StringConverter::default(), reader.read::<String>());
 }

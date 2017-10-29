@@ -49,17 +49,35 @@ use conversions::*;
 pub enum Error {
     /// An unexpected empty buffer
     BufferEmpty,
+
     /// An unexpected full buffer
     BufferFull,
+
     /// An unexpected closed buffer
     BufferClosed,
+
     /// An unexpected closed buffer
     ConversionFailed,
+
+    /// An unexpected bit overflow
+    BitOverflow {
+        /// The number of bits given
+        bits: u8,
+
+        /// The number of bits expected
+        expected: u8,
+    },
 }
 
 impl fmt::Display for Error {
-    fn fmt(&self, formatter: &mut fmt::Formatter) -> result::Result<(), fmt::Error> {
-        write!(formatter, "{}", (self as &error::Error).description())
+    fn fmt(&self, f: &mut fmt::Formatter) -> result::Result<(), fmt::Error> {
+        match *self {
+            Error::BufferEmpty => write!(f, "buffer empty"),
+            Error::BufferFull => write!(f, "buffer full"),
+            Error::BufferClosed => write!(f, "buffer closed"),
+            Error::ConversionFailed => write!(f, "conversion failed"),
+            Error::BitOverflow { bits, expected } => write!(f, "bit overflow ({} > {})", bits, expected),
+        }
     }
 }
 
@@ -70,6 +88,7 @@ impl error::Error for Error {
             Error::BufferFull => "buffer full",
             Error::BufferClosed => "buffer closed",
             Error::ConversionFailed => "conversion failed",
+            Error::BitOverflow { .. } => "bit overflow",
         }
     }
 }
@@ -226,6 +245,11 @@ impl BitBuffer {
         self.bits == 0
     }
 
+    /// Returns `true` if the buffer is aligned to a byte.
+    pub fn is_aligned(&self) -> bool {
+        self.bits%8 == 0
+    }
+
     /// Returns `true` if the buffer has a whole byte and `false` otherwise.
     pub fn has_byte(&self) -> bool {
         self.bits >= 8
@@ -319,6 +343,24 @@ impl<T: io::Read> BitReader<T> {
     /// Reads a value using a converter.
     pub fn read_using<V, C>(&mut self, converter: &C) -> Result<V> where C: BitRead<V> {
         converter.read_value_from(self)
+    }
+
+    /// Loads data into a struct.
+    pub fn load<V: BitLoadable>(&mut self, loader: &mut V) -> Result<()> {
+        loader.load_from(self)
+    }
+
+    /// Returns `true` if the internal buffer is aligned to a byte.
+    pub fn is_aligned(&self) -> bool {
+        self.buffer.is_aligned()
+    }
+
+    /// Aligns the stream to the next byte.
+    pub fn align(&mut self) -> Result<()> {
+        while !self.is_aligned() {
+            self.read_bit().map(|_| ())?;
+        }
+        Ok(())
     }
 
     /// Reads a single bit.
@@ -455,6 +497,19 @@ impl<T: io::Write> BitWriter<T> {
         converter.write_value_to(value, self)
     }
 
+    /// Returns `true` if the internal buffer is aligned to a byte.
+    pub fn is_aligned(&self) -> bool {
+        self.buffer.is_aligned()
+    }
+
+    /// Aligns the stream to the next byte.
+    pub fn align(&mut self) -> Result<()> {
+        while !self.is_aligned() {
+            self.write_bit(false)?;
+        }
+        Ok(())
+    }
+
     /// Writes a single bit.
     pub fn write_bit(&mut self, bit: bool) -> Result<()> {
         self.buffer.push_bit_right(bit)?;
@@ -557,9 +612,17 @@ impl<T: io::Write> Drop for BitWriter<T> {
     }
 }
 
+/// A trait for loading data to a struct
+///
+/// **Used for structs that cannot be returned meaningfully or are using the reader to update their internal state.**
+pub trait BitLoadable: Sized {
+    /// Loads data for this struct.
+    fn load_from<R: io::Read>(&mut self, reader: &mut BitReader<R>) -> Result<()>;
+}
+
 /// A trait for reading a value
 pub trait BitReadable: Sized {
-    /// Read a value from the given reader
+    /// Reads a value from the given reader.
     fn read_from<R: io::Read>(reader: &mut BitReader<R>) -> Result<Self>;
 }
 
@@ -577,7 +640,7 @@ impl BitReadable for u8 {
 
 /// A trait for writing a value
 pub trait BitWritable: Sized {
-    /// Write this value to the given writer
+    /// Writes this value to the given writer.
     fn write_to<W: io::Write>(self, writer: &mut BitWriter<W>) -> Result<()>;
 }
 
@@ -593,14 +656,47 @@ impl BitWritable for u8 {
     }
 }
 
-impl<'a> BitWritable for &'a bool {
-    fn write_to<W: io::Write>(self, writer: &mut BitWriter<W>) -> Result<()> {
-        writer.write_bit(*self)
+macro_rules! impl_bit_convert {
+    ($( $u: ident $i: ident $b: expr ),+) => { $(
+        impl BitReadable for $u {
+            fn read_from<R: io::Read>(reader: &mut BitReader<R>) -> Result<Self> {
+                reader.read_using(&BitMask::bits($b))
+            }
+        }
+        impl BitReadable for $i {
+            fn read_from<R: io::Read>(reader: &mut BitReader<R>) -> Result<Self> {
+                reader.read_using(&BitMask::bits($b))
+            }
+        }
+        impl BitWritable for $u {
+            fn write_to<W: io::Write>(self, writer: &mut BitWriter<W>) -> Result<()> {
+                writer.write_using(self, &BitMask::bits($b))
+            }
+        }
+        impl BitWritable for $i {
+            fn write_to<W: io::Write>(self, writer: &mut BitWriter<W>) -> Result<()> {
+                writer.write_using(self, &BitMask::bits($b))
+            }
+        }
+    )+ }
+}
+
+impl_bit_convert!(u64 i64 64, u32 i32 32, u16 i16 16);
+
+impl BitReadable for String {
+    fn read_from<R: io::Read>(reader: &mut BitReader<R>) -> Result<Self> {
+        reader.read_using(&StringConverter::default())
     }
 }
 
-impl<'a> BitWritable for &'a u8 {
+impl BitWritable for String {
     fn write_to<W: io::Write>(self, writer: &mut BitWriter<W>) -> Result<()> {
-        writer.write_byte(*self)
+        writer.write_using(self, &StringConverter::default())
+    }
+}
+
+impl<'a> BitWritable for &'a str {
+    fn write_to<W: io::Write>(self, writer: &mut BitWriter<W>) -> Result<()> {
+        writer.write_using(self, &StringConverter::default())
     }
 }
