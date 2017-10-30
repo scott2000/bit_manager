@@ -19,16 +19,22 @@ pub trait BitWrite<T>: Sized {
 #[derive(Debug)]
 pub enum StringConverter {
     /// Prefixes the string with length.
+    ///
+    /// This is the default option. The recommended number of bits for the prefix is 32.
     LengthPrefixed {
         /// The number of bits in the prefix
         prefix_bits: u8,
     },
 
-    /// Terminates the string with a null character. The string must not contain a null character.
+    /// Terminates the string with a null character (`\0`). The string must not contain a null character.
+    ///
+    /// This option is recommended if it is possible to guarantee that the string will never contain a null character.
     NullTerminated,
 
     /// Writes a string with a specified fixed length. If the string is shorter, it will have
     /// null characters (`\0`) appended until it is the right length.
+    ///
+    /// This option is only recommended if it is known in advance how long the string will be.
     FixedLength {
         /// The length of the string
         length: u32,
@@ -159,7 +165,7 @@ impl<T> BitWrite<T> for StringConverter where T: AsRef<str> {
                     return Err(Error::ConversionFailed);
                 }
                 let extra = bytes-value.len();
-                writer.write_bytes(value.as_bytes()).map(|_| ())?;
+                writer.write_bytes(value.as_bytes())?;
                 for _ in 0..extra {
                     writer.write_byte(0)?;
                 }

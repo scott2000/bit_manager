@@ -358,7 +358,7 @@ impl<T: io::Read> BitReader<T> {
     /// Aligns the stream to the next byte.
     pub fn align(&mut self) -> Result<()> {
         while !self.is_aligned() {
-            self.read_bit().map(|_| ())?;
+            self.read_bit()?;
         }
         Ok(())
     }
@@ -638,6 +638,32 @@ impl BitReadable for u8 {
     }
 }
 
+impl BitReadable for () {
+    fn read_from<R: io::Read>(_: &mut BitReader<R>) -> Result<Self> {
+        Ok(())
+    }
+}
+
+impl<T> BitReadable for Option<T> where T: BitReadable {
+    fn read_from<R: io::Read>(reader: &mut BitReader<R>) -> Result<Self> {
+        if reader.read_bit()? {
+            Ok(Some(reader.read()?))
+        } else {
+            Ok(None)
+        }
+    }
+}
+
+impl<T, F> BitReadable for result::Result<T, F> where T: BitReadable, F: BitReadable {
+    fn read_from<R: io::Read>(reader: &mut BitReader<R>) -> Result<Self> {
+        if reader.read_bit()? {
+            Ok(Ok(reader.read()?))
+        } else {
+            Ok(Err(reader.read()?))
+        }
+    }
+}
+
 /// A trait for writing a value
 pub trait BitWritable: Sized {
     /// Writes this value to the given writer.
@@ -653,6 +679,38 @@ impl BitWritable for bool {
 impl BitWritable for u8 {
     fn write_to<W: io::Write>(self, writer: &mut BitWriter<W>) -> Result<()> {
         writer.write_byte(self)
+    }
+}
+
+impl BitWritable for () {
+    fn write_to<W: io::Write>(self, _: &mut BitWriter<W>) -> Result<()> {
+        Ok(())
+    }
+}
+
+impl<T> BitWritable for Option<T> where T: BitWritable {
+    fn write_to<W: io::Write>(self, writer: &mut BitWriter<W>) -> Result<()> {
+        if let Some(value) = self {
+            writer.write_bit(true)?;
+            writer.write(value)
+        } else {
+            writer.write_bit(false)
+        }
+    }
+}
+
+impl<T, F> BitWritable for result::Result<T, F> where T: BitWritable, F: BitWritable {
+    fn write_to<W: io::Write>(self, writer: &mut BitWriter<W>) -> Result<()> {
+        match self {
+            Ok(value) => {
+                writer.write_bit(true)?;
+                writer.write(value)
+            },
+            Err(value) => {
+                writer.write_bit(false)?;
+                writer.write(value)
+            }
+        }
     }
 }
 
@@ -682,6 +740,18 @@ macro_rules! impl_bit_convert {
 }
 
 impl_bit_convert!(u64 i64 64, u32 i32 32, u16 i16 16);
+
+impl BitReadable for i8 {
+    fn read_from<R: io::Read>(reader: &mut BitReader<R>) -> Result<Self> {
+        reader.read_byte().map(|b| b as i8)
+    }
+}
+
+impl BitWritable for i8 {
+    fn write_to<W: io::Write>(self, writer: &mut BitWriter<W>) -> Result<()> {
+        writer.write_byte(self as u8)
+    }
+}
 
 impl BitReadable for String {
     fn read_from<R: io::Read>(reader: &mut BitReader<R>) -> Result<Self> {
