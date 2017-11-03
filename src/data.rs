@@ -1,8 +1,45 @@
-//! Provides converters for reading and writing values using stucts
+//! Provides methods for reading and writing data both directly
+//! (using [`BitStore`]) and indirectly
+//! (using [`BitConvert`]).
+//!
+//! [`BitStore`]: http://docs.rs/bit_manager/0.5.0/bit_manager/data/trait.BitStore.html
+//! [`BitConvert`]: http://docs.rs/bit_manager/0.5.0/bit_manager/data/trait.BitConvert.html
 
-use super::*;
+use io::*;
+use buffer::*;
 
-/// An enum that allows the writing and reading of strings using various methods
+/// A trait for storing a value directly
+///
+/// ## Storage Primitives
+/// * `bool`, `u8` (directly implemented)
+/// * `u16`, `u32`, `u64`
+/// * `i8`, `i16`, `i32`, `i64`
+/// * `f32`, `f64`
+/// * `String` (through [`StringConverter`])
+/// * `Option<T>` where `T` can be stored
+/// * `Result<T, F>` where `T` and `F` can be stored
+/// * `[T; 0]` through `[T; 32]` where `T` can be stored
+/// * `()` (the unit type)
+///
+/// [`StringConverter`]: http://docs.rs/bit_manager/0.5.0/bit_manager/data/enum.StringConverter.html
+pub trait BitStore: Sized {
+    /// Reads a value from the given reader.
+    fn read_from<R: BitRead>(reader: &mut R) -> Result<Self>;
+
+    /// Writes this value to the given writer.
+    fn write_to<W: BitWrite>(&self, writer: &mut W) -> Result<()>;
+}
+
+/// A trait for a converter that allows the reading and writing of types though a converter
+pub trait BitConvert<T>: Sized {
+    /// Reads a value from the given reader.
+    fn read_value_from<R: BitRead>(&self, reader: &mut R) -> Result<T>;
+
+    /// Writes this value to the given writer.
+    fn write_value_to<W: BitWrite>(&self, value: &T, writer: &mut W) -> Result<()>;
+}
+
+/// An enum that allows the reading and writing of strings using various methods
 #[derive(Debug)]
 pub enum StringConverter {
     /// Prefixes the string with length.
@@ -161,7 +198,7 @@ bit_convert! {
     };
 }
 
-/// A struct that allows writing non-bit-length numbers
+/// A struct that allows the reading and writing of non-bit-length numbers
 #[derive(Debug)]
 pub struct BitMask {
     bits: u8,

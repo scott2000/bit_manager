@@ -3,8 +3,8 @@
 use std::result;
 use std::fs;
 use std::f64;
-use ::*;
-use conversions::*;
+use prelude::*;
+use buffer::*;
 
 #[test] fn test() {
     let mut writer = BitWriter::new_with_precision(fs::File::create("/home/scott/Desktop/test.txt").expect("file not created"), Precision::Bit);
