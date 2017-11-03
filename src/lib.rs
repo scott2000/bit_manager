@@ -2,14 +2,14 @@
 //!
 //! # Writing
 //! ```
-//! extern crate bit_manager;
-//! use bit_manager::BitWriter;
+//! # extern crate bit_manager;
+//! use bit_manager::{BitWriter, BitWrite};
 //!
 //! # fn main() {
 //! let mut writer = BitWriter::new(Vec::new());
 //!
-//! writer.write_bits(&[false, true, false, false, true, false, false, false]).unwrap();
-//! writer.write(b'i').unwrap();
+//! writer.write(&[false, true, false, false, true, false, false, false]).unwrap();
+//! writer.write(&b'i').unwrap();
 //!
 //! assert_eq!(writer.into_inner().unwrap(), b"Hi");
 //! # }
@@ -17,32 +17,253 @@
 //!
 //! # Reading
 //! ```
-//! extern crate bit_manager;
-//! use bit_manager::BitReader;
+//! # extern crate bit_manager;
+//! use bit_manager::{BitReader, BitRead};
 //!
 //! # fn main() {
 //! let mut reader = BitReader::new(&b"Hi"[..]);
-//! let mut h = [false; 8];
 //!
-//! reader.read_bits(&mut h).unwrap();
-//!
-//! assert_eq!(h, [false, true, false, false, true, false, false, false]);
-//! assert_eq!(reader.read_byte().unwrap(), b'i');
+//! assert_eq!(reader.read::<[bool; 8]>().unwrap(), [false, true, false, false, true, false, false, false]);
+//! assert_eq!(reader.read::<u8>().unwrap(), b'i');
 //! # }
 //! ```
-//!
 #![deny(missing_docs)]
+
+/// A macro for creating BitStore implementations
+///
+/// ## Usage
+///
+/// ```
+/// # /*
+/// bit_store! {
+///     for Type {
+///         (reader) => { ... },
+///         (self, writer) => { ... },
+///     };
+///     impl<T: Trait> for Type<T> {
+///         (reader) => { ... }
+///         (self, writer) => { ... }
+///     };
+/// }
+/// # */
+/// ```
+///
+/// Expands into:
+///
+/// ```
+/// # /*
+/// impl BitStore for Type {
+///     fn read_from<R: BitRead>(reader: &mut R) -> Result<Type> { ... }
+///     fn write_to<W: BitWrite>(&self, writer: &mut W) -> Result<()> { ... }
+/// }
+///
+/// impl<T: Trait> BitStore for Type<T> {
+///     fn read_from<R: BitRead>(reader: &mut R) -> Result<Type> { ... }
+///     fn write_to<W: BitWrite>(&self, writer: &mut W) -> Result<()> { ... }
+/// }
+/// # */
+/// ```
+///
+/// ## Example
+///
+/// ```
+/// # #[macro_use]
+/// # extern crate bit_manager;
+/// struct ByteWrapper(u8);
+///
+/// bit_store! {
+///     for ByteWrapper {
+///         (reader) => { Ok(ByteWrapper(reader.read_byte()?)) },
+///         (self, writer) => { writer.write_byte(self.0) },
+///     };
+/// }
+///
+/// # fn main() {}
+/// ```
+#[macro_export]
+macro_rules! bit_store {
+    { $( $(impl<$($t: ident $(: $b: ident $(+ $x: ident)*)*),+>)* for $ty: ty {
+        ( $r: ident ) => $read: block,
+        ( $self: ident, $w: ident ) => $write: block,
+    }; )+ } => { $(
+        impl$(<$($t $(: $b $(+ $x)*)*, )+>)* $crate::BitStore for $ty {
+            fn read_from<R: $crate::BitRead>($r: &mut R) -> $crate::Result<Self> $read
+            fn write_to<W: $crate::BitWrite>(&$self, $w: &mut W) -> $crate::Result<()> $write
+        }
+    )+ };
+}
+
+macro_rules! const_bit_store {
+    { $(impl<$($t: ident $(: $b: ident $(+ $x: ident)*)*),+>)* const $ty: ty {
+        $read: expr,
+        $write: expr,
+    }; } => {
+        impl$(<$($t $(: $b $(+ $x)*)*, )+>)* $crate::BitStore for $ty {
+            fn read_from<R: $crate::BitRead>(_: &mut R) -> $crate::Result<Self> { $read }
+            fn write_to<W: $crate::BitWrite>(&self, _: &mut W) -> $crate::Result<()> { $write }
+        }
+    };
+}
+
+/// A macro for creating BitConvert implementations
+///
+/// ## Usage
+///
+/// ```
+/// # /*
+/// bit_convert! {
+///     for Convert: Type {
+///         (self, reader) => { ... },
+///         (self, value, writer) => { ... },
+///     };
+///     impl<T: Trait> for Convert: T {
+///         (self, reader) => { ... },
+///         (self, value, writer) => { ... },
+///     };
+///     impl<T: Trait, F: Trait> for Convert<F>: T {
+///         (self, reader) => { ... },
+///         (self, value, writer) => { ... },
+///     };
+/// }
+/// # */
+/// ```
+///
+/// Expands into:
+///
+/// ```
+/// # /*
+/// impl BitConvert<Type> for Convert {
+///     fn read_value_from<R: BitRead>(&self, reader: &mut R) -> Result<Type> { ... }
+///     fn write_value_to<W: BitWrite>(&self, value: &Type, writer: &mut W) -> Result<()> { ... }
+/// }
+///
+/// impl<T: Trait> BitConvert<T> for Convert {
+///     fn read_value_from<R: BitRead>(&self, reader: &mut R) -> Result<T> { ... }
+///     fn write_value_to<W: BitWrite>(&self, value: &T, writer: &mut W) -> Result<()> { ... }
+/// }
+///
+/// impl<T: Trait, F: Trait> BitConvert<T> for Convert<F> {
+///     fn read_value_from<R: BitRead>(&self, reader: &mut R) -> Result<T> { ... }
+///     fn write_value_to<W: BitWrite>(&self, value: &T, writer: &mut W) -> Result<()> { ... }
+/// }
+/// # */
+/// ```
+///
+/// ## Example
+///
+/// ```
+/// # #![allow(dead_code)]
+/// # #[macro_use]
+/// # extern crate bit_manager;
+/// struct ByteConverter;
+///
+/// bit_convert! {
+///     for ByteConverter: u8 {
+///         (self, reader) => { reader.read_byte() },
+///         (self, value, writer) => { writer.write_byte(*value) },
+///     };
+/// }
+///
+/// # fn main() {}
+/// ```
+#[macro_export]
+macro_rules! bit_convert {
+    { $( $(impl<$($t: ident $(: $b: ident $(+ $x: ident)*)*),+>)* for $ty: ty: $return: ty {
+        ( $self_r: ident, $r: ident ) => $read: block,
+        ( $self_w: ident, $v: ident, $w: ident ) => $write: block,
+    }; )+ } => { $(
+        impl$(<$($t $(: $b $(+ $x)*)*, )+>)* $crate::BitConvert<$return> for $ty {
+            fn read_value_from<R: $crate::BitRead>(&$self_r, $r: &mut R) -> $crate::Result<$return> $read
+            fn write_value_to<W: $crate::BitWrite>(&$self_w, $v: &$return, $w: &mut W) -> $crate::Result<()> $write
+        }
+    )+ };
+}
 
 pub mod prelude;
 pub mod conversions;
+#[cfg(test)]
+mod test;
 
 use std::error;
 use std::result;
 use std::fmt;
-use std::io;
 use std::mem;
 
 use conversions::*;
+use std::io::{Read, Write};
+
+/// A trait for types that can read bits
+pub trait BitRead: Sized {
+    /// Reads a single bit.
+    fn read_bit(&mut self) -> Result<bool>;
+
+    /// Reads a single byte.
+    ///
+    /// *Default implementation is unoptimized and should be overridden*
+    fn read_byte(&mut self) -> Result<u8> {
+        let mut byte = 0;
+        for bit in (0..8).rev() {
+            if self.read_bit()? {
+                byte |= 1 << bit;
+            }
+        }
+        Ok(byte)
+    }
+
+    /// Reads a value that implements [`BitStore`](trait.BitStore.html) using the `read_from` function.
+    fn read<T: BitStore>(&mut self) -> Result<T> {
+        T::read_from(self)
+    }
+
+    /// Reads a value using a converter that implements [`BitConvert`](trait.BitConvert.html) with the `read_value_from` function.
+    fn read_using<T, C>(&mut self, converter: &C) -> Result<T> where C: BitConvert<T> {
+        converter.read_value_from(self)
+    }
+}
+
+/// A trait for types that can write bits
+pub trait BitWrite: Sized {
+    /// Writes a single bit.
+    fn write_bit(&mut self, bit: bool) -> Result<()>;
+
+    /// Writes a single byte.
+    ///
+    /// *Default implementation is unoptimized and should be overridden*
+    fn write_byte(&mut self, byte: u8) -> Result<()> {
+        for bit in (0..8).rev() {
+            self.write_bit((byte >> bit) & 1 == 1)?;
+        }
+        Ok(())
+    }
+
+    /// Writes a value that implements [`BitStore`](trait.BitStore.html) using the `write_to` function.
+    fn write<T: BitStore>(&mut self, value: &T) -> Result<()> {
+        value.write_to(self)
+    }
+
+    /// Writes a value using a converter that implements [`BitConvert`](trait.BitConvert.html) with the `write_value_to` function.
+    fn write_using<T, C>(&mut self, value: &T, converter: &C) -> Result<()> where C: BitConvert<T> {
+        converter.write_value_to(value, self)
+    }
+}
+
+/// A trait for storing a value
+pub trait BitStore: Sized {
+    /// Reads a value from the given reader.
+    fn read_from<R: BitRead>(reader: &mut R) -> Result<Self>;
+
+    /// Writes this value to the given writer.
+    fn write_to<W: BitWrite>(&self, writer: &mut W) -> Result<()>;
+}
+
+/// A trait for a converter that allows storing of types that don't implement [BitStore](trait.BitStore.html)
+pub trait BitConvert<T>: Sized {
+    /// Reads a value from the given reader.
+    fn read_value_from<R: BitRead>(&self, reader: &mut R) -> Result<T>;
+
+    /// Writes this value to the given writer.
+    fn write_value_to<W: BitWrite>(&self, value: &T, writer: &mut W) -> Result<()>;
+}
 
 /// An enum for possible errors when reading and writing bits
 #[derive(Debug)]
@@ -56,7 +277,7 @@ pub enum Error {
     /// An unexpected closed buffer
     BufferClosed,
 
-    /// An unexpected closed buffer
+    /// An unexpected failed conversion
     ConversionFailed,
 
     /// An unexpected bit overflow
@@ -66,6 +287,12 @@ pub enum Error {
 
         /// The number of bits expected
         expected: u8,
+    },
+
+    /// Another error containing a message
+    OtherError {
+        /// A message describing the error, unknown error if none is specified
+        message: Option<String>,
     },
 }
 
@@ -77,6 +304,13 @@ impl fmt::Display for Error {
             Error::BufferClosed => write!(f, "buffer closed"),
             Error::ConversionFailed => write!(f, "conversion failed"),
             Error::BitOverflow { bits, expected } => write!(f, "bit overflow ({} > {})", bits, expected),
+            Error::OtherError { ref message } => {
+                if let &Some(ref message) = message {
+                    write!(f, "bit error ({})", message)
+                } else {
+                    write!(f, "unknown error")
+                }
+            },
         }
     }
 }
@@ -89,12 +323,10 @@ impl error::Error for Error {
             Error::BufferClosed => "buffer closed",
             Error::ConversionFailed => "conversion failed",
             Error::BitOverflow { .. } => "bit overflow",
+            Error::OtherError { .. } => "bit error",
         }
     }
 }
-
-/// A specialized Result type for bit I/O operations
-pub type Result<T> = result::Result<T, Error>;
 
 /// An enum that represents how a stream is terminated
 #[derive(Debug)]
@@ -123,6 +355,9 @@ pub enum Precision {
     /// * 01001000 => 01001000(10000000)
     Bit,
 }
+
+/// A specialized Result type for bit I/O operations
+pub type Result<T> = result::Result<T, Error>;
 
 /// A buffer that stores up to 64 bits and remembers how many are being stored
 #[derive(Debug, Clone)]
@@ -299,27 +534,24 @@ impl fmt::Display for BitBuffer {
 ///
 /// ## Example
 /// ```
-/// extern crate bit_manager;
-/// use bit_manager::BitReader;
+/// # extern crate bit_manager;
+/// use bit_manager::{BitReader, BitRead};
 ///
 /// # fn main() {
 /// let mut reader = BitReader::new(&b"Hi"[..]);
-/// let mut h = [false; 8];
 ///
-/// reader.read_bits(&mut h).unwrap();
-///
-/// assert_eq!(h, [false, true, false, false, true, false, false, false]);
-/// assert_eq!(reader.read_byte().unwrap(), b'i');
+/// assert_eq!(reader.read::<[bool; 8]>().unwrap(), [false, true, false, false, true, false, false, false]);
+/// assert_eq!(reader.read::<u8>().unwrap(), b'i');
 /// # }
 /// ```
-pub struct BitReader<T: io::Read> {
+pub struct BitReader<T: Read> {
     input: T,
     buffer: BitBuffer,
     precision: Precision,
     closed: bool,
 }
 
-impl<T: io::Read> BitReader<T> {
+impl<T: Read> BitReader<T> {
     /// Creates a new bit reader with the given reader. Uses `Precision::Byte` by default.
     pub fn new(reader: T) -> BitReader<T> {
         BitReader::new_with_precision(reader, Precision::Byte)
@@ -335,21 +567,6 @@ impl<T: io::Read> BitReader<T> {
         }
     }
 
-    /// Reads a value.
-    pub fn read<V: BitReadable>(&mut self) -> Result<V> {
-        V::read_from(self)
-    }
-
-    /// Reads a value using a converter.
-    pub fn read_using<V, C>(&mut self, converter: &C) -> Result<V> where C: BitRead<V> {
-        converter.read_value_from(self)
-    }
-
-    /// Loads data into a struct.
-    pub fn load<V: BitLoadable>(&mut self, loader: &mut V) -> Result<()> {
-        loader.load_from(self)
-    }
-
     /// Returns `true` if the internal buffer is aligned to a byte.
     pub fn is_aligned(&self) -> bool {
         self.buffer.is_aligned()
@@ -361,52 +578,6 @@ impl<T: io::Read> BitReader<T> {
             self.read_bit()?;
         }
         Ok(())
-    }
-
-    /// Reads a single bit.
-    pub fn read_bit(&mut self) -> Result<bool> {
-        self.update();
-        Ok(self.buffer.pop_bit_left()?)
-    }
-
-    /// Reads as many bits as possible into a buffer. Returns the number of bits read.
-    pub fn read_bits(&mut self, buffer: &mut [bool]) -> Result<usize> {
-        let mut read: usize = 0;
-        for i in buffer.iter_mut() {
-            self.update();
-            match self.buffer.pop_bit_left() {
-                Ok(bit) => {
-                    *i = bit;
-                    read += 1;
-                },
-                Err(_) if read > 0 => return Ok(read),
-                Err(error) => return Err(error),
-            }
-        }
-        Ok(read)
-    }
-
-    /// Reads a single byte.
-    pub fn read_byte(&mut self) -> Result<u8> {
-        self.update();
-        Ok(self.buffer.pop_left()?)
-    }
-
-    /// Reads as many bytes as possible into a buffer. Returns the number of bytes read.
-    pub fn read_bytes(&mut self, buffer: &mut [u8]) -> Result<usize> {
-        let mut read: usize = 0;
-        for i in buffer.iter_mut() {
-            self.update();
-            match self.buffer.pop_left() {
-                Ok(byte) => {
-                    *i = byte;
-                    read += 1;
-                },
-                Err(_) if read > 0 => return Ok(read),
-                Err(error) => return Err(error),
-            }
-        }
-        Ok(read)
     }
 
     fn update(&mut self) {
@@ -440,22 +611,19 @@ impl<T: io::Read> BitReader<T> {
     }
 }
 
+impl<T: Read> BitRead for BitReader<T> {
+    fn read_bit(&mut self) -> Result<bool> {
+        self.update();
+        self.buffer.pop_bit_left()
+    }
+
+    fn read_byte(&mut self) -> Result<u8> {
+        self.update();
+        self.buffer.pop_left()
+    }
+}
+
 /// A wrapper for any type implementing `io::Write` that allows the writing of individual bits
-///
-/// ## Example
-/// ```
-/// extern crate bit_manager;
-/// use bit_manager::BitWriter;
-///
-/// # fn main() {
-/// let mut writer = BitWriter::new(Vec::new());
-///
-/// writer.write_bits(&[false, true, false, false, true, false, false, false]).unwrap();
-/// writer.write(b'i').unwrap();
-///
-/// assert_eq!(writer.into_inner().unwrap(), b"Hi");
-/// # }
-/// ```
 ///
 /// ## Closing
 ///
@@ -466,13 +634,28 @@ impl<T: io::Read> BitReader<T> {
 ///
 /// A failed flush operation will result in `Error::BufferClosed`. Any further operations
 /// will also fail because the internal buffer may have been corrupted.
-pub struct BitWriter<T: io::Write> {
+///
+/// ## Example
+/// ```
+/// # extern crate bit_manager;
+/// use bit_manager::{BitWriter, BitWrite};
+///
+/// # fn main() {
+/// let mut writer = BitWriter::new(Vec::new());
+///
+/// writer.write(&[false, true, false, false, true, false, false, false]).unwrap();
+/// writer.write(&b'i').unwrap();
+///
+/// assert_eq!(writer.into_inner().unwrap(), b"Hi");
+/// # }
+/// ```
+pub struct BitWriter<T: Write> {
     output: Option<T>,
     buffer: BitBuffer,
     precision: Precision,
 }
 
-impl<T: io::Write> BitWriter<T> {
+impl<T: Write> BitWriter<T> {
     /// Creates a new bit writer with the given writer. Uses `Precision::Byte` by default.
     pub fn new(writer: T) -> BitWriter<T> {
         BitWriter::new_with_precision(writer, Precision::Byte)
@@ -487,16 +670,6 @@ impl<T: io::Write> BitWriter<T> {
         }
     }
 
-    /// Writes a value.
-    pub fn write<V: BitWritable>(&mut self, value: V) -> Result<()> {
-        value.write_to(self)
-    }
-
-    /// Writes a value using a converter.
-    pub fn write_using<V, C>(&mut self, value: V, converter: &C) -> Result<()> where C: BitWrite<V> {
-        converter.write_value_to(value, self)
-    }
-
     /// Returns `true` if the internal buffer is aligned to a byte.
     pub fn is_aligned(&self) -> bool {
         self.buffer.is_aligned()
@@ -508,48 +681,6 @@ impl<T: io::Write> BitWriter<T> {
             self.write_bit(false)?;
         }
         Ok(())
-    }
-
-    /// Writes a single bit.
-    pub fn write_bit(&mut self, bit: bool) -> Result<()> {
-        self.buffer.push_bit_right(bit)?;
-        self.flush().and(Ok(()))
-    }
-
-    /// Writes as many bits as possible into a buffer. Returns the number of bits written.
-    pub fn write_bits(&mut self, bits: &[bool]) -> Result<usize> {
-        let mut written = 0;
-        for bit in bits.iter() {
-            match self.write_bit(*bit) {
-                Ok(_) => {
-                    written += 1;
-                },
-                Err(_) if written > 0 => return Ok(written),
-                Err(error) => return Err(error),
-            }
-        }
-        Ok(written)
-    }
-
-    /// Writes a single byte.
-    pub fn write_byte(&mut self, byte: u8) -> Result<()> {
-        self.buffer.push_right(byte)?;
-        self.flush().and(Ok(()))
-    }
-
-    /// Writes as many bytes as possible into a buffer. Returns the number of bytes written.
-    pub fn write_bytes(&mut self, bytes: &[u8]) -> Result<usize> {
-        let mut written = 0;
-        for byte in bytes.iter() {
-            match self.write_byte(*byte) {
-                Ok(_) => {
-                    written += 1;
-                },
-                Err(_) if written > 0 => return Ok(written),
-                Err(error) => return Err(error),
-            }
-        }
-        Ok(written)
     }
 
     /// Flushes the internal buffer. Returns the number of bits left in the buffer.
@@ -566,21 +697,6 @@ impl<T: io::Write> BitWriter<T> {
                     Err(Error::BufferClosed)
                 },
             }
-        } else {
-            Err(Error::BufferClosed)
-        }
-    }
-
-    fn close_mut(&mut self) -> Result<()> {
-        if self.output.is_some() {
-            if let Precision::Bit = self.precision {
-                self.buffer.push_bit_right(true)?;
-                self.precision = Precision::Byte;
-            }
-            while self.buffer.bits() & 7 != 0 {
-                self.buffer.push_bit_right(false)?;
-            }
-            self.flush().and(Ok(()))
         } else {
             Err(Error::BufferClosed)
         }
@@ -603,170 +719,152 @@ impl<T: io::Write> BitWriter<T> {
         self.output = None;
         Ok(())
     }
+
+    fn close_mut(&mut self) -> Result<()> {
+        if self.output.is_some() {
+            if let Precision::Bit = self.precision {
+                self.buffer.push_bit_right(true)?;
+                self.precision = Precision::Byte;
+            }
+            while self.buffer.bits() & 7 != 0 {
+                self.buffer.push_bit_right(false)?;
+            }
+            self.flush().and(Ok(()))
+        } else {
+            Err(Error::BufferClosed)
+        }
+    }
 }
 
-impl<T: io::Write> Drop for BitWriter<T> {
+impl<T: Write> BitWrite for BitWriter<T> {
+    fn write_bit(&mut self, bit: bool) -> Result<()> {
+        self.buffer.push_bit_right(bit)?;
+        self.flush()?;
+        Ok(())
+    }
+
+    fn write_byte(&mut self, byte: u8) -> Result<()> {
+        self.buffer.push_right(byte)?;
+        self.flush()?;
+        Ok(())
+    }
+}
+
+impl<T: Write> Drop for BitWriter<T> {
     #[allow(unused_must_use)]
     fn drop(&mut self) {
         self.close_mut();
     }
 }
 
-/// A trait for loading data to a struct
-///
-/// **Used for structs that cannot be returned meaningfully or are using the reader to update their internal state.**
-pub trait BitLoadable: Sized {
-    /// Loads data for this struct.
-    fn load_from<R: io::Read>(&mut self, reader: &mut BitReader<R>) -> Result<()>;
-}
-
-/// A trait for reading a value
-pub trait BitReadable: Sized {
-    /// Reads a value from the given reader.
-    fn read_from<R: io::Read>(reader: &mut BitReader<R>) -> Result<Self>;
-}
-
-impl BitReadable for bool {
-    fn read_from<R: io::Read>(reader: &mut BitReader<R>) -> Result<Self> {
-        reader.read_bit()
-    }
-}
-
-impl BitReadable for u8 {
-    fn read_from<R: io::Read>(reader: &mut BitReader<R>) -> Result<Self> {
-        reader.read_byte()
-    }
-}
-
-impl BitReadable for () {
-    fn read_from<R: io::Read>(_: &mut BitReader<R>) -> Result<Self> {
-        Ok(())
-    }
-}
-
-impl<T> BitReadable for Option<T> where T: BitReadable {
-    fn read_from<R: io::Read>(reader: &mut BitReader<R>) -> Result<Self> {
-        if reader.read_bit()? {
-            Ok(Some(reader.read()?))
-        } else {
-            Ok(None)
-        }
-    }
-}
-
-impl<T, F> BitReadable for result::Result<T, F> where T: BitReadable, F: BitReadable {
-    fn read_from<R: io::Read>(reader: &mut BitReader<R>) -> Result<Self> {
-        if reader.read_bit()? {
-            Ok(Ok(reader.read()?))
-        } else {
-            Ok(Err(reader.read()?))
-        }
-    }
-}
-
-/// A trait for writing a value
-pub trait BitWritable: Sized {
-    /// Writes this value to the given writer.
-    fn write_to<W: io::Write>(self, writer: &mut BitWriter<W>) -> Result<()>;
-}
-
-impl BitWritable for bool {
-    fn write_to<W: io::Write>(self, writer: &mut BitWriter<W>) -> Result<()> {
-        writer.write_bit(self)
-    }
-}
-
-impl BitWritable for u8 {
-    fn write_to<W: io::Write>(self, writer: &mut BitWriter<W>) -> Result<()> {
-        writer.write_byte(self)
-    }
-}
-
-impl BitWritable for () {
-    fn write_to<W: io::Write>(self, _: &mut BitWriter<W>) -> Result<()> {
-        Ok(())
-    }
-}
-
-impl<T> BitWritable for Option<T> where T: BitWritable {
-    fn write_to<W: io::Write>(self, writer: &mut BitWriter<W>) -> Result<()> {
-        if let Some(value) = self {
-            writer.write_bit(true)?;
-            writer.write(value)
-        } else {
-            writer.write_bit(false)
-        }
-    }
-}
-
-impl<T, F> BitWritable for result::Result<T, F> where T: BitWritable, F: BitWritable {
-    fn write_to<W: io::Write>(self, writer: &mut BitWriter<W>) -> Result<()> {
-        match self {
-            Ok(value) => {
-                writer.write_bit(true)?;
-                writer.write(value)
-            },
-            Err(value) => {
-                writer.write_bit(false)?;
-                writer.write(value)
-            }
-        }
-    }
+bit_store! {
+    for bool {
+        (reader) => { reader.read_bit() },
+        (self, writer) => { writer.write_bit(*self) },
+    };
+    for u8 {
+        (reader) => { reader.read_byte() },
+        (self, writer) => { writer.write_byte(*self) },
+    };
+    for i8 {
+        (reader) => { reader.read_byte().map(|b| b as i8) },
+        (self, writer) => { writer.write_byte(*self as u8) },
+    };
 }
 
 macro_rules! impl_bit_convert {
-    ($( $u: ident $i: ident $b: expr ),+) => { $(
-        impl BitReadable for $u {
-            fn read_from<R: io::Read>(reader: &mut BitReader<R>) -> Result<Self> {
-                reader.read_using(&BitMask::bits($b))
+    ($( $s: expr => $( $v: ident ),+  );+) => { $( $( bit_store! { for $v {
+        (reader) => { Ok(Self::from_be( unsafe { mem::transmute::<[u8; $s], Self>(reader.read()?) } )) },
+        (self, writer) => { writer.write( & unsafe { mem::transmute::<Self, [u8; $s]>((*self).to_be()) } ) },
+    }; } )+ )+ }
+}
+
+impl_bit_convert!(2 => u16, i16; 4 => u32, i32; 8 => u64, i64);
+
+macro_rules! impl_bit_convert_float {
+    ($( $s: expr => $u: ident => $v: ident  );+) => { $( bit_store! { for $v {
+        (reader) => { Ok( unsafe { mem::transmute($u::from_be(mem::transmute::<[u8; $s], $u>(reader.read()?))) } ) },
+        (self, writer) => { writer.write( & unsafe { mem::transmute::<$u, [u8; $s]>(mem::transmute::<Self, $u>(*self).to_be()) } ) },
+    }; } )+ }
+}
+
+impl_bit_convert_float!(4 => u32 => f32; 8 => u64 => f64);
+
+bit_store! {
+    for String {
+        (reader) => { reader.read_using(&StringConverter::default()) },
+        (self, writer) => { writer.write_using(self, &StringConverter::default()) },
+    };
+    impl<T: BitStore> for Option<T> {
+        (reader) => {
+            if reader.read_bit()? {
+                Ok(Some(reader.read()?))
+            } else {
+                Ok(None)
             }
-        }
-        impl BitReadable for $i {
-            fn read_from<R: io::Read>(reader: &mut BitReader<R>) -> Result<Self> {
-                reader.read_using(&BitMask::bits($b))
+        },
+        (self, writer) => {
+            if let &Some(ref value) = self {
+                writer.write_bit(true)?;
+                writer.write(value)
+            } else {
+                writer.write_bit(false)
             }
-        }
-        impl BitWritable for $u {
-            fn write_to<W: io::Write>(self, writer: &mut BitWriter<W>) -> Result<()> {
-                writer.write_using(self, &BitMask::bits($b))
+        },
+    };
+    impl<T: BitStore, F: BitStore> for result::Result<T, F> {
+        (reader) => {
+            if reader.read_bit()? {
+                Ok(Ok(reader.read()?))
+            } else {
+                Ok(Err(reader.read()?))
             }
-        }
-        impl BitWritable for $i {
-            fn write_to<W: io::Write>(self, writer: &mut BitWriter<W>) -> Result<()> {
-                writer.write_using(self, &BitMask::bits($b))
+        },
+        (self, writer) => {
+            match self {
+                &Ok(ref value) => {
+                    writer.write_bit(true)?;
+                    writer.write(value)
+                },
+                &Err(ref value) => {
+                    writer.write_bit(false)?;
+                    writer.write(value)
+                }
             }
+        },
+    };
+}
+
+macro_rules! impl_array {
+    ($x: expr; $a: ident $( $b: ident )*) => {
+        impl_array! { $x - 1; $( $b )* }
+        bit_store! {
+            impl<T: BitStore> for [T; $x] {
+                (reader) => { Ok([reader.$a()? $(, reader.$b()?)*]) },
+                (self, writer) => {
+                    for item in self.iter() {
+                        writer.write(item)?;
+                    }
+                    Ok(())
+                },
+            };
         }
-    )+ }
+    };
+    ($x: expr; ) => {
+        const_bit_store! {
+            impl<T> const [T; $x] {
+                Ok([]),
+                Ok(()),
+            };
+        }
+    };
 }
 
-impl_bit_convert!(u64 i64 64, u32 i32 32, u16 i16 16);
+impl_array! { 32; read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read }
 
-impl BitReadable for i8 {
-    fn read_from<R: io::Read>(reader: &mut BitReader<R>) -> Result<Self> {
-        reader.read_byte().map(|b| b as i8)
-    }
-}
-
-impl BitWritable for i8 {
-    fn write_to<W: io::Write>(self, writer: &mut BitWriter<W>) -> Result<()> {
-        writer.write_byte(self as u8)
-    }
-}
-
-impl BitReadable for String {
-    fn read_from<R: io::Read>(reader: &mut BitReader<R>) -> Result<Self> {
-        reader.read_using(&StringConverter::default())
-    }
-}
-
-impl BitWritable for String {
-    fn write_to<W: io::Write>(self, writer: &mut BitWriter<W>) -> Result<()> {
-        writer.write_using(self, &StringConverter::default())
-    }
-}
-
-impl<'a> BitWritable for &'a str {
-    fn write_to<W: io::Write>(self, writer: &mut BitWriter<W>) -> Result<()> {
-        writer.write_using(self, &StringConverter::default())
-    }
+const_bit_store! {
+    const () {
+        Ok(()),
+        Ok(()),
+    };
 }
