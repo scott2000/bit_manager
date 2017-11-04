@@ -1,5 +1,5 @@
 [package]
-name = "bit-manager"
+name = "bit_manager"
 version = "0.5.2"
 authors = ["Scott Taylor <scott11x8@gmail.com>"]
 

@@ -37,6 +37,37 @@ pub trait BitRead: Sized {
     fn read_using<T, C>(&mut self, converter: &C) -> Result<T> where C: BitConvert<T> {
         converter.read_value_from(self)
     }
+
+    /// Reads values that implement [`BitStore`] to a buffer. Returns the number of values read.
+    ///
+    /// [`BitStore`]: http://docs.rs/bit_manager/0.5.2/bit_manager/data/trait.BitStore.html
+    fn read_to_buffer<T, B>(&mut self, mut buffer: B) -> usize where T: BitStore, B: AsMut<[T]> {
+        let mut read = 0;
+        'read: for item in buffer.as_mut().iter_mut() {
+            match self.read() {
+                Ok(value) => *item = value,
+                Err(_) => break 'read,
+            }
+            read += 1;
+        }
+        read
+    }
+
+
+    /// Reads values using a converter that implements [`BitConvert`] to a buffer. Returns the number of values read.
+    ///
+    /// [`BitConvert`]: http://docs.rs/bit_manager/0.5.2/bit_manager/data/trait.BitConvert.html
+    fn read_to_buffer_using<T, B, C>(&mut self, mut buffer: B, converter: &C) -> usize where B: AsMut<[T]>, C: BitConvert<T> {
+        let mut read = 0;
+        'read: for item in buffer.as_mut().iter_mut() {
+            match self.read_using(converter) {
+                Ok(value) => *item = value,
+                Err(_) => break 'read,
+            }
+            read += 1;
+        }
+        read
+    }
 }
 
 /// A trait for types that can write bits
@@ -67,19 +98,43 @@ pub trait BitWrite: Sized {
     fn write_using<T, C>(&mut self, value: &T, converter: &C) -> Result<()> where C: BitConvert<T> {
         converter.write_value_to(value, self)
     }
+
+    /// Writes values that implement [`BitStore`] from a buffer. Returns the number of values written.
+    ///
+    /// [`BitStore`]: http://docs.rs/bit_manager/0.5.2/bit_manager/data/trait.BitStore.html
+    fn write_buffer<T, B>(&mut self, buffer: B) -> usize where T: BitStore, B: AsRef<[T]> {
+        let mut written = 0;
+        'write: for item in buffer.as_ref().iter() {
+            match self.write(item) {
+                Ok(()) => written += 1,
+                Err(_) => break 'write,
+            }
+        }
+        written
+    }
+
+    /// Writes values using a converter that implements [`BitConvert`] from a buffer. Returns the number of values written.
+    ///
+    /// [`BitConvert`]: http://docs.rs/bit_manager/0.5.2/bit_manager/data/trait.BitConvert.html
+    fn write_buffer_using<T, B, C>(&mut self, buffer: B, converter: &C) -> usize where B: AsRef<[T]>, C: BitConvert<T> {
+        let mut written = 0;
+        'write: for item in buffer.as_ref().iter() {
+            match self.write_using(item, converter) {
+                Ok(()) => written += 1,
+                Err(_) => break 'write,
+            }
+        }
+        written
+    }
 }
 
 /// A wrapper for any type implementing `io::Read` that allows the reading of individual bits
 ///
 /// ## Example
 /// ```
-/// # extern crate bit_manager;
+/// # extern crate bit_manager; fn main() { test().unwrap(); } fn test() -> bit_manager::Result<()> {
 /// use bit_manager::{BitReader, BitRead};
-/// # fn main() {
-/// #     test().unwrap();
-/// # }
 ///
-/// # fn test() -> bit_manager::Result<()> {
 /// let mut reader = BitReader::new([0b01101110u8, 0b10100000u8].as_ref());
 ///
 /// assert_eq!(reader.read_bit()?, false);
@@ -181,13 +236,9 @@ impl<T: Read> BitRead for BitReader<T> {
 ///
 /// ## Example
 /// ```
-/// # extern crate bit_manager;
+/// # extern crate bit_manager; fn main() { test().unwrap(); } fn test() -> bit_manager::Result<()> {
 /// use bit_manager::{BitWriter, BitWrite};
-/// # fn main() {
-/// #     test().unwrap();
-/// # }
 ///
-/// # fn test() -> bit_manager::Result<()> {
 /// let mut writer = BitWriter::new(Vec::new());
 ///
 /// writer.write_bit(false)?;

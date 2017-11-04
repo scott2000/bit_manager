@@ -10,6 +10,10 @@ use buffer::*;
 
 /// A trait for storing a value directly
 ///
+/// ## Derive
+///
+/// `BitStore` can be derived using the [bit_manager_derive] crate.
+///
 /// ## Storage Primitives
 /// * `bool`, `u8` (directly implemented)
 /// * `u16`, `u32`, `u64`
@@ -19,9 +23,10 @@ use buffer::*;
 /// * `Option<T>` where `T` can be stored
 /// * `Result<T, F>` where `T` and `F` can be stored
 /// * `[T; 0]` through `[T; 32]` where `T` can be stored
-/// * `()` (the unit type)
+/// * `()` (the unit type) and all tuples with 2 through 26 storable values
 ///
 /// [`StringConverter`]: http://docs.rs/bit_manager/0.5.2/bit_manager/data/enum.StringConverter.html
+/// [bit_manager_derive]: http://docs.rs/bit_manager_derive
 pub trait BitStore: Sized {
     /// Reads a value from the given reader.
     fn read_from<R: BitRead>(reader: &mut R) -> Result<Self>;
@@ -287,3 +292,22 @@ macro_rules! impl_bit_mask {
 }
 
 impl_bit_mask!(u64 64, u32 32, u16 16, u8 8);
+
+/// Redirects to [`BitStore`]
+///
+/// [`BitStore`]: http://docs.rs/bit_manager/0.5.2/bit_manager/data/trait.BitStore.html
+pub struct DefaultConverter;
+
+bit_const! {
+    const DefaultConverter {
+        Ok(DefaultConverter),
+        Ok(()),
+    };
+}
+
+bit_convert! {
+    impl<T: BitStore> for DefaultConverter: T {
+        (self, reader) => { T::read_from(reader) },
+        (self, value, writer) => { value.write_to(writer) },
+    };
+}

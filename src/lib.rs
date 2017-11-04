@@ -2,13 +2,9 @@
 //!
 //! # Reading
 //! ```
-//! # extern crate bit_manager;
+//! # extern crate bit_manager; fn main() { test().unwrap(); } fn test() -> bit_manager::Result<()> {
 //! use bit_manager::{BitReader, BitRead};
-//! # fn main() {
-//! #     test().unwrap();
-//! # }
 //!
-//! # fn test() -> bit_manager::Result<()> {
 //! let mut reader = BitReader::new([0b01101110u8, 0b10100000u8].as_ref());
 //!
 //! assert_eq!(reader.read_bit()?, false);
@@ -20,13 +16,9 @@
 //!
 //! # Writing
 //! ```
-//! # extern crate bit_manager;
+//! # extern crate bit_manager; fn main() { test().unwrap(); } fn test() -> bit_manager::Result<()> {
 //! use bit_manager::{BitWriter, BitWrite};
-//! # fn main() {
-//! #     test().unwrap();
-//! # }
 //!
-//! # fn test() -> bit_manager::Result<()> {
 //! let mut writer = BitWriter::new(Vec::new());
 //!
 //! writer.write_bit(false)?;
@@ -193,9 +185,72 @@ macro_rules! array_impl {
 
 array_impl! { 32; read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read }
 
+macro_rules! tuple_impl {
+    ($a: ident $( $b: ident )+) => {
+        #[allow(non_snake_case)]
+        impl<$a $(, $b )*> BitStore for ( $a $(, $b )* ) where $a: BitStore $(, $b: BitStore )* {
+            fn read_from<READ: BitRead>(reader: &mut READ) -> buffer::Result<Self> { Ok((reader.read()? $(, reader.read::<$b>()?)*)) }
+            fn write_to<WRITE: BitWrite>(&self, writer: &mut WRITE) -> buffer::Result<()> {
+                let &( ref $a, $(ref $b, )* ) = self;
+                writer.write($a)
+                $(
+                    ?; writer.write($b)
+                )*
+            }
+        }
+    };
+}
+
 bit_const! {
     const () {
         Ok(()),
         Ok(()),
     };
 }
+
+// Unit     { }
+// Expr     { A }
+tuple_impl! { A B }
+tuple_impl! { A B C }
+tuple_impl! { A B C D }
+tuple_impl! { A B C D E }
+tuple_impl! { A B C D E F }
+tuple_impl! { A B C D E F G }
+tuple_impl! { A B C D E F G H }
+tuple_impl! { A B C D E F G H I }
+tuple_impl! { A B C D E F G H I J }
+tuple_impl! { A B C D E F G H I J K }
+tuple_impl! { A B C D E F G H I J K L }
+tuple_impl! { A B C D E F G H I J K L M }
+tuple_impl! { A B C D E F G H I J K L M N }
+tuple_impl! { A B C D E F G H I J K L M N O }
+tuple_impl! { A B C D E F G H I J K L M N O P }
+tuple_impl! { A B C D E F G H I J K L M N O P Q }
+tuple_impl! { A B C D E F G H I J K L M N O P Q R }
+tuple_impl! { A B C D E F G H I J K L M N O P Q R S }
+tuple_impl! { A B C D E F G H I J K L M N O P Q R S T }
+tuple_impl! { A B C D E F G H I J K L M N O P Q R S T U }
+tuple_impl! { A B C D E F G H I J K L M N O P Q R S T U V }
+tuple_impl! { A B C D E F G H I J K L M N O P Q R S T U V W }
+tuple_impl! { A B C D E F G H I J K L M N O P Q R S T U V W X }
+tuple_impl! { A B C D E F G H I J K L M N O P Q R S T U V W X Y }
+tuple_impl! { A B C D E F G H I J K L M N O P Q R S T U V W X Y Z }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
