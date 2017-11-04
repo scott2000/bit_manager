@@ -87,8 +87,6 @@ pub mod prelude;
 pub mod buffer;
 pub mod data;
 pub mod io;
-#[cfg(test)]
-mod test;
 
 bit_store! {
     for bool {

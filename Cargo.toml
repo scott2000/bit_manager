@@ -7,5 +7,4 @@ description = "A crate for reading and writing bits from various streams"
 keywords = ["bit", "byte", "manager", "read", "write"]
 license = "MIT"
 
-include = ["src/**/*", "Cargo.toml", "LICENSE"]
-exclude = ["src/test.rs"]
+include = ["src/buffer.rs", "src/data.rs", "src/io.rs", "src/lib.rs", "src/prelude.rs", "Cargo.toml", "LICENSE"]
