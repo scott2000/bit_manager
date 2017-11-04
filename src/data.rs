@@ -2,8 +2,8 @@
 //! (using [`BitStore`]) and indirectly
 //! (using [`BitConvert`]).
 //!
-//! [`BitStore`]: http://docs.rs/bit_manager/0.5.1/bit_manager/data/trait.BitStore.html
-//! [`BitConvert`]: http://docs.rs/bit_manager/0.5.1/bit_manager/data/trait.BitConvert.html
+//! [`BitStore`]: http://docs.rs/bit_manager/0.5.2/bit_manager/data/trait.BitStore.html
+//! [`BitConvert`]: http://docs.rs/bit_manager/0.5.2/bit_manager/data/trait.BitConvert.html
 
 use io::*;
 use buffer::*;
@@ -21,7 +21,7 @@ use buffer::*;
 /// * `[T; 0]` through `[T; 32]` where `T` can be stored
 /// * `()` (the unit type)
 ///
-/// [`StringConverter`]: http://docs.rs/bit_manager/0.5.1/bit_manager/data/enum.StringConverter.html
+/// [`StringConverter`]: http://docs.rs/bit_manager/0.5.2/bit_manager/data/enum.StringConverter.html
 pub trait BitStore: Sized {
     /// Reads a value from the given reader.
     fn read_from<R: BitRead>(reader: &mut R) -> Result<Self>;
