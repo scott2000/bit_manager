@@ -1,5 +1,7 @@
 //! A crate for reading and writing bits from various streams
 //!
+//! *This crate is unstable. Features may be added or removed without warning. Expect breaking changes.*
+//!
 //! # Reading
 //! ```
 //! # extern crate bit_manager; fn main() { test().unwrap(); } fn test() -> bit_manager::Result<()> {

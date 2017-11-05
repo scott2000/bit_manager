@@ -26,21 +26,21 @@ pub trait BitRead: Sized {
 
     /// Reads a value that implements [`BitStore`] using the `read_from` function.
     ///
-    /// [`BitStore`]: http://docs.rs/bit_manager/0.5.2/bit_manager/data/trait.BitStore.html
+    /// [`BitStore`]: http://docs.rs/bit_manager/0.5.3/bit_manager/data/trait.BitStore.html
     fn read<T: BitStore>(&mut self) -> Result<T> {
         T::read_from(self)
     }
 
     /// Reads a value using a converter that implements [`BitConvert`] with the `read_value_from` function.
     ///
-    /// [`BitConvert`]: http://docs.rs/bit_manager/0.5.2/bit_manager/data/trait.BitConvert.html
+    /// [`BitConvert`]: http://docs.rs/bit_manager/0.5.3/bit_manager/data/trait.BitConvert.html
     fn read_using<T, C>(&mut self, converter: &C) -> Result<T> where C: BitConvert<T> {
         converter.read_value_from(self)
     }
 
     /// Reads values that implement [`BitStore`] to a buffer. Returns the number of values read.
     ///
-    /// [`BitStore`]: http://docs.rs/bit_manager/0.5.2/bit_manager/data/trait.BitStore.html
+    /// [`BitStore`]: http://docs.rs/bit_manager/0.5.3/bit_manager/data/trait.BitStore.html
     fn read_to_buffer<T, B>(&mut self, mut buffer: B) -> usize where T: BitStore, B: AsMut<[T]> {
         let mut read = 0;
         'read: for item in buffer.as_mut().iter_mut() {
@@ -56,7 +56,7 @@ pub trait BitRead: Sized {
 
     /// Reads values using a converter that implements [`BitConvert`] to a buffer. Returns the number of values read.
     ///
-    /// [`BitConvert`]: http://docs.rs/bit_manager/0.5.2/bit_manager/data/trait.BitConvert.html
+    /// [`BitConvert`]: http://docs.rs/bit_manager/0.5.3/bit_manager/data/trait.BitConvert.html
     fn read_to_buffer_using<T, B, C>(&mut self, mut buffer: B, converter: &C) -> usize where B: AsMut<[T]>, C: BitConvert<T> {
         let mut read = 0;
         'read: for item in buffer.as_mut().iter_mut() {
@@ -87,21 +87,21 @@ pub trait BitWrite: Sized {
 
     /// Writes a value that implements [`BitStore`] using the `write_to` function.
     ///
-    /// [`BitStore`]: http://docs.rs/bit_manager/0.5.2/bit_manager/data/trait.BitStore.html
+    /// [`BitStore`]: http://docs.rs/bit_manager/0.5.3/bit_manager/data/trait.BitStore.html
     fn write<T: BitStore>(&mut self, value: &T) -> Result<()> {
         value.write_to(self)
     }
 
     /// Writes a value using a converter that implements [`BitConvert`] with the `write_value_to` function.
     ///
-    /// [`BitConvert`]: http://docs.rs/bit_manager/0.5.2/bit_manager/data/trait.BitConvert.html
+    /// [`BitConvert`]: http://docs.rs/bit_manager/0.5.3/bit_manager/data/trait.BitConvert.html
     fn write_using<T, C>(&mut self, value: &T, converter: &C) -> Result<()> where C: BitConvert<T> {
         converter.write_value_to(value, self)
     }
 
     /// Writes values that implement [`BitStore`] from a buffer. Returns the number of values written.
     ///
-    /// [`BitStore`]: http://docs.rs/bit_manager/0.5.2/bit_manager/data/trait.BitStore.html
+    /// [`BitStore`]: http://docs.rs/bit_manager/0.5.3/bit_manager/data/trait.BitStore.html
     fn write_buffer<T, B>(&mut self, buffer: B) -> usize where T: BitStore, B: AsRef<[T]> {
         let mut written = 0;
         'write: for item in buffer.as_ref().iter() {
@@ -115,7 +115,7 @@ pub trait BitWrite: Sized {
 
     /// Writes values using a converter that implements [`BitConvert`] from a buffer. Returns the number of values written.
     ///
-    /// [`BitConvert`]: http://docs.rs/bit_manager/0.5.2/bit_manager/data/trait.BitConvert.html
+    /// [`BitConvert`]: http://docs.rs/bit_manager/0.5.3/bit_manager/data/trait.BitConvert.html
     fn write_buffer_using<T, B, C>(&mut self, buffer: B, converter: &C) -> usize where B: AsRef<[T]>, C: BitConvert<T> {
         let mut written = 0;
         'write: for item in buffer.as_ref().iter() {
@@ -263,7 +263,7 @@ impl<T: Write> BitWriter<T> {
 
     /// Creates a new bit writer with the given writer and [`Precision`]
     ///
-    /// [`Precision`]: http://docs.rs/bit_manager/0.5.2/bit_manager/buffer/enum.Precision.html
+    /// [`Precision`]: http://docs.rs/bit_manager/0.5.3/bit_manager/buffer/enum.Precision.html
     pub fn new_with_precision(writer: T, precision: Precision) -> BitWriter<T> {
         BitWriter {
             output: Some(writer),
